@@ -1,0 +1,22 @@
+groups:
+  - name: MicroservicesAlerts
+    rules:
+      # Service down alert
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.instance }} is down"
+          description: "The service {{ $labels.instance }} has stopped responding."
+
+      # 10 users created alert
+      - alert: UsersThresholdReached
+        expr: users_created_total >= 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "User count reached 10"
+          description: "The microservice has 10 or more users created."
