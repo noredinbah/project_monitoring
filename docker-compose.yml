@@ -5,41 +5,35 @@ services:
     build: ./api-gateway
     ports:
       - "4000:4000"
-    depends_on:
-      - user-service
-      - order-service
-      - inventory-service
-      - payment-service
     environment:
-      - NODE_ENV=production
+      - USER_SERVICE_URL=http://user-service:3001
+      - ORDER_SERVICE_URL=http://order-service:3002
+      - INVENTORY_SERVICE_URL=http://inventory-service:3003
+      - PAYMENT_SERVICE_URL=http://payment-service:3004
 
   user-service:
     build: ./user-service
     ports:
       - "3001:3001"
-    environment:
-      - NODE_ENV=production
 
   order-service:
     build: ./order-service
     ports:
       - "3002:3002"
     environment:
-      - NODE_ENV=production
+      - USER_SERVICE=http://user-service:3001
+      - INVENTORY_SERVICE=http://inventory-service:3003
+      - PAYMENT_SERVICE=http://payment-service:3004
 
   inventory-service:
     build: ./inventory-service
     ports:
       - "3003:3003"
-    environment:
-      - NODE_ENV=production
 
   payment-service:
     build: ./payment-service
     ports:
       - "3004:3004"
-    environment:
-      - NODE_ENV=production
 
   frontend:
     build: ./frontend
@@ -47,3 +41,5 @@ services:
       - "8080:80"
     depends_on:
       - api-gateway
+    environment:
+      - API_GATEWAY_URL=http://api-gateway:4000

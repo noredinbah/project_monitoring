@@ -8,11 +8,12 @@ app.use(cors()); // <-- enable CORS for all routes
 
 // Define service URLs
 const services = {
-  user: 'http://localhost:3001',
-  order: 'http://localhost:3002',
-  inventory: 'http://localhost:3003',
-  payment: 'http://localhost:3004',
+  user: process.env.USER_SERVICE_URL || 'http://localhost:3001',
+  order: process.env.ORDER_SERVICE_URL || 'http://localhost:3002',
+  inventory: process.env.INVENTORY_SERVICE_URL || 'http://localhost:3003',
+  payment: process.env.PAYMENT_SERVICE_URL || 'http://localhost:3004',
 };
+
 
 // Simple routing logic
 app.use('/user', async (req, res) => {

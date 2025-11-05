@@ -209,10 +209,11 @@
 
         <pre id="output">Ready... Click a button to interact with services!</pre>
     </div>
+    <script src="env.js"></script>
 
     <script>
       const output = document.getElementById('output');
-      const gateway = 'http://localhost:4000';
+      const gateway = `${window._env_.API_GATEWAY_URL}`;
 
       function showLoading() {
           output.innerHTML = '<div class="loading">⏳ Processing request...</div>';
