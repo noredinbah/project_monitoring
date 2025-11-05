@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microservices Dashboard with Orchestration</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        h2 {
+            color: #333;
+            margin-top: 0;
+        }
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        button {
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .order-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        input, select {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        #output {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 5px;
+            margin-top: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .loading {
+            text-align: center;
+            color: #667eea;
+            font-weight: 600;
+            padding: 20px;
+        }
+        .steps {
+            margin: 15px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 5px;
+        }
+        .step {
+            padding: 8px 12px;
+            margin: 5px 0;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .step.completed {
+            background: #d4edda;
+            color: #155724;
+            border-left: 3px solid #28a745;
+        }
+        .step.failed {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 3px solid #dc3545;
+        }
+        .step.started {
+            background: #fff3cd;
+            color: #856404;
+            border-left: 3px solid #ffc107;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        .status-completed {
+            background: #28a745;
+            color: white;
+        }
+        .status-failed {
+            background: #dc3545;
+            color: white;
+        }
+        .status-pending {
+            background: #ffc107;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 Microservices Dashboard</h1>
+        <p class="subtitle">Service Orchestration & Monitoring Platform</p>
+
+        <div class="section">
+            <h2>📦 Create Order (Full Orchestration)</h2>
+            <p style="color: #666; font-size: 14px;">This will verify user → check inventory → process payment</p>
+            <div class="order-form">
+                <input type="number" id="userId" placeholder="User ID" value="1">
+                <select id="item">
+                    <option value="apple">Apple</option>
+                    <option value="banana">Banana</option>
+                    <option value="orange">Orange</option>
+                    <option value="grape">Grape</option>
+                </select>
+                <input type="number" id="qty" placeholder="Quantity" value="2" min="1">
+                <input type="number" id="amount" placeholder="Amount ($)" value="20" min="1">
+                <button onclick="createOrder()">🚀 Create Order</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🧾 Quick Actions</h2>
+            <div class="button-grid">
+                <button onclick="getUsers()">👥 GET Users</button>
+                <button onclick="getOrders()">📋 GET Orders</button>
+                <button onclick="getInventory()">📦 GET Inventory</button>
+                <button onclick="addUser()">➕ Add User</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🔧 Inventory Management</h2>
+            <div class="button-grid">
+                <button onclick="increaseInventory()">⬆️ Increase Stock</button>
+                <button onclick="decreaseInventory()">⬇️ Decrease Stock</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>💓 Health Checks</h2>
+            <div class="button-grid">
+                <button onclick="checkHealth('user')">👤 User Health</button>
+                <button onclick="checkHealth('order')">📦 Order Health</button>
+                <button onclick="checkHealth('inventory')">🏪 Inventory Health</button>
+                <button onclick="checkHealth('payment')">💳 Payment Health</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📊 Prometheus Metrics</h2>
+            <div class="button-grid">
+                <button onclick="showMetrics('user')">User Metrics</button>
+                <button onclick="showMetrics('order')">Order Metrics</button>
+                <button onclick="showMetrics('inventory')">Inventory Metrics</button>
+                <button onclick="showMetrics('payment')">Payment Metrics</button>
+            </div>
+        </div>
+
+        <pre id="output">Ready... Click a button to interact with services!</pre>
+    </div>
+
+    <script>
+      const output = document.getElementById('output');
+      const gateway = 'http://localhost:4000';
+
+      function showLoading() {
+          output.innerHTML = '<div class="loading">⏳ Processing request...</div>';
+      }
+
+      function formatOrderResponse(data) {
+          let html = `<div style="color: #4fc3f7; font-weight: bold;">Order #${data.id}</div>`;
+          html += `<div>Status: <span class="status-badge status-${data.status}">${data.status.toUpperCase()}</span></div>`;
+          html += `<div>User ID: ${data.userId} | Item: ${data.item} | Qty: ${data.qty} | Amount: $${data.amount}</div>`;
+          
+          if (data.steps && data.steps.length > 0) {
+              html += '<div class="steps"><strong>Orchestration Steps:</strong>';
+              data.steps.forEach(step => {
+                  html += `<div class="step ${step.status}">`;
+                  html += `<strong>${step.step.replace(/_/g, ' ').toUpperCase()}</strong>: ${step.status}`;
+                  if (step.reason) html += ` - ${step.reason}`;
+                  if (step.data) html += ` - ${JSON.stringify(step.data)}`;
+                  html += '</div>';
+              });
+              html += '</div>';
+          }
+          
+          html += `<div style="margin-top: 10px; font-size: 12px; color: #888;">Created: ${data.createdAt}</div>`;
+          if (data.completedAt) html += `<div style="font-size: 12px; color: #888;">Completed: ${data.completedAt}</div>`;
+          
+          return html;
+      }
+
+      async function createOrder() {
+        showLoading();
+        const order = {
+          userId: parseInt(document.getElementById('userId').value),
+          item: document.getElementById('item').value,
+          qty: parseInt(document.getElementById('qty').value),
+          amount: parseInt(document.getElementById('amount').value)
+        };
+        
+        try {
+          const res = await fetch(`${gateway}/order/orders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(order),
+          });
+          const data = await res.json();
+          output.innerHTML = formatOrderResponse(data);
+        } catch (err) {
+          output.textContent = `Error: ${err.message}`;
+        }
+      }
+
+      async function getUsers() {
+        showLoading();
+        const res = await fetch(`${gateway}/user/users`);
+        output.textContent = JSON.stringify(await res.json(), null, 2);
+      }
+
+      async function getOrders() {
+        showLoading();
+        const res = await fetch(`${gateway}/order/orders`);
+        const orders = await res.json();
+        
+        if (orders.length === 0) {
+            output.textContent = 'No orders yet. Create one!';
+        } else {
+            let html = '';
+            orders.forEach(order => {
+                html += formatOrderResponse(order) + '<hr style="margin: 20px 0; border: 1px solid #333;">';
+            });
+            output.innerHTML = html;
+        }
+      }
+
+      async function getInventory() {
+        showLoading();
+        const res = await fetch(`${gateway}/inventory/inventory`);
+        const inv = await res.json();
+        let html = '<div style="color: #4fc3f7; font-weight: bold; margin-bottom: 10px;">Current Inventory:</div>';
+        for (let [item, qty] of Object.entries(inv)) {
+            html += `<div>${item}: <strong style="color: ${qty < 20 ? '#ff5252' : '#69f0ae'}">${qty}</strong> units</div>`;
+        }
+        output.innerHTML = html;
+      }
+
+      async function addUser() {
+        const name = prompt('Enter user name:');
+        if (!name) return;
+        
+        showLoading();
+        const res = await fetch(`${gateway}/user/users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        output.textContent = JSON.stringify(await res.json(), null, 2);
+      }
+
+      async function increaseInventory() {
+        const item = prompt('Item name:');
+        const qty = parseInt(prompt('Quantity to add:'));
+        if (!item || !qty) return;
+        
+        showLoading();
+        const res = await fetch(`${gateway}/inventory/inventory/increase`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item, qty }),
+        });
+        output.textContent = JSON.stringify(await res.json(), null, 2);
+      }
+
+      async function decreaseInventory() {
+        const item = prompt('Item name:');
+        const qty = parseInt(prompt('Quantity to remove:'));
+        if (!item || !qty) return;
+        
+        showLoading();
+        const res = await fetch(`${gateway}/inventory/inventory/decrease`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item, qty }),
+        });
+        output.textContent = JSON.stringify(await res.json(), null, 2);
+      }
+
+      async function checkHealth(service) {
+        showLoading();
+        const res = await fetch(`${gateway}/${service}/health`);
+        output.textContent = JSON.stringify(await res.json(), null, 2);
+      }
+
+      async function showMetrics(service) {
+        showLoading();
+        const res = await fetch(`${gateway}/${service}/metrics`);
+        output.textContent = await res.text();
+      }
+    </script>
+</body>
+</html>
