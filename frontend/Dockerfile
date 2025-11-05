@@ -3,12 +3,13 @@ FROM nginx:alpine
 # Copy your app files
 COPY . /usr/share/nginx/html
 
+# Replace the default Nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
 # Copy entrypoint script
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-# Expose port
 EXPOSE 80
 
-# Start Nginx after substituting env variables
 ENTRYPOINT ["/docker-entrypoint.sh"]
