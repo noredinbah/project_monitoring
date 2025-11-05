@@ -1,8 +1,14 @@
 FROM nginx:alpine
 
-# Copy your HTML frontend to nginx html folder
+# Copy your app files
 COPY . /usr/share/nginx/html
 
+# Copy entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Expose port
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+# Start Nginx after substituting env variables
+ENTRYPOINT ["/docker-entrypoint.sh"]
