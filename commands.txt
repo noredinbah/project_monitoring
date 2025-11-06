@@ -1,0 +1,1237 @@
+Prerequisites
+Required Software
+Ensure you have the following tools installed:
+
+bash# Check if tools are installed
+kubectl version --client
+docker --version
+minikube version
+helm version
+git --version
+curl --version
+
+
+Detailed Setup Steps
+Step 1: Initialize Kubernetes Cluster
+bash# Start minikube with adequate resources
+minikube start 
+
+# Verify cluster is running
+kubectl cluster-info
+kubectl get nodes
+Expected Output:
+
+
+Step 2: Create Namespaces
+bash# Create monitoring namespace
+kubectl create namespace monitoring
+
+# Create microservices namespace
+kubectl create namespace microservices
+
+# Verify namespaces
+kubectl get namespaces
+
+
+Step 3: Add Helm Repositories
+bash# Add Prometheus Community charts
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+
+# Add Grafana charts
+helm repo add grafana https://grafana.github.io/helm-charts
+
+# Add Jaeger charts
+helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
+
+# Update repositories
+helm repo update
+
+# Verify repositories
+helm repo list
+
+
+Step 4: Deploy kube-prometheus-stack
+bash# Create custom values file (or use the provided one)
+cat > prometheus-values.yaml <<EOF
+grafana:
+  enabled: true
+  adminPassword: admin123
+  service:
+    type: NodePort
+    nodePort: 30300
+  persistence:
+    enabled: true
+    size: 10Gi
+
+prometheus:
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 30090
+  prometheusSpec:
+    retention: 7d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          resources:
+            requests:
+              storage: 10Gi
+
+alertmanager:
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 30903
+
+prometheus-node-exporter:
+  enabled: true
+
+kube-state-metrics:
+  enabled: true
+EOF
+
+# Install the stack
+helm upgrade --install prometheus-stack \
+  prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --values prometheus-values.yaml \
+  --wait \
+  --timeout 10m
+
+# Wait for all pods to be ready
+kubectl wait --for=condition=ready pod \
+  --all -n monitoring \
+  --timeout=300s
+Step 5: Deploy Optional Components
+Loki (Log Aggregation)
+bashhelm upgrade --install loki grafana/loki-stack \
+  --namespace monitoring \
+  --set grafana.enabled=false \
+  --set prometheus.enabled=false \
+  --set loki.persistence.enabled=true \
+  --set loki.persistence.size=10Gi \
+  --wait
+Jaeger (Distributed Tracing)
+bashhelm upgrade --install jaeger jaegertracing/jaeger \
+  --namespace monitoring \
+  --set provisionDataStore.cassandra=false \
+  --set allInOne.enabled=true \
+  --set storage.type=memory \
+  --wait
+Step 6: Apply Custom Configurations
+bash# Apply ServiceMonitor for microservices
+kubectl apply -f k8s-manifests/servicemonitor-microservices.yaml
+
+# Apply custom alert rules
+kubectl apply -f k8s-manifests/prometheus-alerts.yaml
+
+# Apply network policies
+kubectl apply -f k8s-manifests/networkpolicy-monitoring.yaml
+
+# Apply resource quotas
+kubectl apply -f k8s-manifests/resourcequota.yaml
+
+Accessing the Monitoring Stack
+Get Minikube IP
+bashexport MINIKUBE_IP=$(minikube ip -p microservices-lab)
+echo "Minikube IP: $MINIKUBE_IP"
+Access URLs
+Grafana
+
+URL: http://$MINIKUBE_IP:30300
+Username: admin
+Password: admin123
+Alternative: minikube service prometheus-stack-grafana -n monitoring -p microservices-lab
+
+Prometheus
+
+URL: http://$MINIKUBE_IP:30090
+Alternative: minikube service prometheus-stack-kube-prom-prometheus -n monitoring -p microservices-lab
+
+Alertmanager
+
+URL: http://$MINIKUBE_IP:30903
+Alternative: minikube service prometheus-stack-kube-prom-alertmanager -n monitoring -p microservices-lab
+
+Port Forwarding (Alternative Access)
+bash# Grafana (access at http://localhost:3000)
+kubectl port-forward -n monitoring svc/prometheus-stack-grafana 3000:80
+
+# Prometheus (access at http://localhost:9090)
+kubectl port-forward -n monitoring svc/prometheus-stack-kube-prom-prometheus 9090:9090
+
+# Alertmanager (access at http://localhost:9093)
+kubectl port-forward -n monitoring svc/prometheus-stack-kube-prom-alertmanager 9093:9093
+
+Monitoring Stack Components
+1. Prometheus
+
+Purpose: Metrics collection and storage
+Scraping Interval: 30 seconds
+Retention: 7 days
+Storage: 10GB PersistentVolume
+
+2. Grafana
+
+Purpose: Metrics visualization and dashboarding
+Default Datasource: Prometheus
+Pre-installed Dashboards:
+
+Kubernetes Cluster Monitoring
+Node Exporter Full
+Prometheus Stats
+Pod Monitoring
+
+
+
+3. Alertmanager
+
+Purpose: Alert routing and notification
+Features:
+
+Alert grouping
+Alert silencing
+Notification integrations (email, Slack, PagerDuty)
+
+
+
+4. kube-state-metrics
+
+Purpose: Kubernetes object state metrics
+Metrics Exposed:
+
+Pod status and conditions
+Deployment status
+Node status
+Service status
+
+
+
+5. node-exporter
+
+Purpose: Hardware and OS metrics
+Metrics Exposed:
+
+CPU usage
+Memory usage
+Disk I/O
+Network statistics
+
+
+
+6. Prometheus Operator
+
+Purpose: Kubernetes-native Prometheus management
+Features:
+
+Automatic configuration updates
+ServiceMonitor CRD
+PrometheusRule CRD
+
+
+
+
+Verification Steps
+Check All Components
+bash# Check pods in monitoring namespace
+kubectl get pods -n monitoring
+
+# Expected output: All pods should be Running
+# NAME                                    
+
+
+Verify Metrics Collection
+bash# Port forward Prometheus
+kubectl port-forward -n monitoring svc/prometheus-stack-kube-prom-prometheus 9090:9090 &
+
+# Query metrics
+curl 'http://localhost:9090/api/v1/query?query=up'
+
+# Should return JSON with metrics
+Check Grafana Dashboards
+
+Open Grafana: http://$MINIKUBE_IP:30300
+Login with admin / admin123
+Navigate to Dashboards → Browse
+Verify pre-installed dashboards are available:
+
+Kubernetes / Compute Resources / Cluster
+Kubernetes / Compute Resources / Namespace (Pods)
+Node Exporter / Nodes
+
+
+
+Verify Alert Rules
+bash# Check PrometheusRule resources
+kubectl get prometheusrule -n monitoring
+
+# Access Prometheus UI and navigate to Status → Rules
+# Should see rules for:
+# - Node alerts
+# - Pod alerts
+# - Application alerts
+
+
+# =============================================================================
+# Kubernetes Configuration Files for Monitoring Lab
+# =============================================================================
+# These manifests can be saved as separate files and applied to your cluster
+# after running the setup script.
+# =============================================================================
+
+# =============================================================================
+# 1. ServiceMonitor for Application Metrics
+# File: servicemonitor-microservices.yaml
+# =============================================================================
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: microservices-monitor
+  namespace: microservices
+  labels:
+    app: microservices
+    release: prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: microservice
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 15s
+  namespaceSelector:
+    matchNames:
+    - microservices
+
+# =============================================================================
+# 2. PodMonitor for Additional Pod Metrics
+# File: podmonitor-microservices.yaml
+# =============================================================================
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: microservices-pod-monitor
+  namespace: microservices
+  labels:
+    app: microservices
+    release: prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      monitor: "true"
+  podMetricsEndpoints:
+  - port: metrics
+    path: /metrics
+    interval: 15s
+  namespaceSelector:
+    matchNames:
+    - microservices
+
+# =============================================================================
+# 3. Ingress for External Access
+# File: ingress-monitoring.yaml
+# =============================================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: monitoring-ingress
+  namespace: monitoring
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: grafana.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus-stack-grafana
+            port:
+              number: 80
+  - host: prometheus.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus-stack-kube-prom-prometheus
+            port:
+              number: 9090
+  - host: alertmanager.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus-stack-kube-prom-alertmanager
+            port:
+              number: 9093
+
+# =============================================================================
+# 4. ConfigMap for Prometheus Custom Configuration
+# File: prometheus-config.yaml
+# =============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-custom-config
+  namespace: monitoring
+data:
+  recording-rules.yaml: |
+    groups:
+    - name: microservices_recording_rules
+      interval: 30s
+      rules:
+      # Request rate by service
+      - record: microservice:http_requests:rate5m
+        expr: |
+          sum(rate(http_requests_total[5m])) by (service, namespace)
+      
+      # Error rate by service
+      - record: microservice:http_errors:rate5m
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m])) by (service, namespace)
+      
+      # Average response time
+      - record: microservice:http_request_duration:avg
+        expr: |
+          histogram_quantile(0.5, 
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le)
+          )
+      
+      # 99th percentile response time
+      - record: microservice:http_request_duration:p99
+        expr: |
+          histogram_quantile(0.99, 
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le)
+          )
+      
+      # Pod CPU usage percentage
+      - record: pod:cpu_usage:percent
+        expr: |
+          100 * sum(rate(container_cpu_usage_seconds_total[5m])) by (pod, namespace) /
+          sum(container_spec_cpu_quota / container_spec_cpu_period) by (pod, namespace)
+      
+      # Pod memory usage percentage
+      - record: pod:memory_usage:percent
+        expr: |
+          100 * sum(container_memory_usage_bytes) by (pod, namespace) /
+          sum(container_spec_memory_limit_bytes) by (pod, namespace)
+
+# =============================================================================
+# 5. ConfigMap for Alertmanager Configuration
+# File: alertmanager-config.yaml
+# =============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-custom-config
+  namespace: monitoring
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+      # Add your SMTP/Slack/PagerDuty configs here
+      # smtp_smarthost: 'smtp.gmail.com:587'
+      # smtp_from: 'alertmanager@example.com'
+      # smtp_auth_username: 'your-email@gmail.com'
+      # smtp_auth_password: 'your-app-password'
+    
+    templates:
+    - '/etc/alertmanager/template/*.tmpl'
+    
+    route:
+      group_by: ['alertname', 'cluster', 'service', 'namespace']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      receiver: 'default'
+      
+      routes:
+      # Critical alerts get sent immediately
+      - match:
+          severity: critical
+        receiver: 'critical-alerts'
+        repeat_interval: 1h
+      
+      # Warning alerts get grouped
+      - match:
+          severity: warning
+        receiver: 'warning-alerts'
+        repeat_interval: 4h
+    
+    receivers:
+    - name: 'default'
+      # Default receiver - logs only
+      
+    - name: 'critical-alerts'
+      # Email example (uncomment and configure)
+      # email_configs:
+      # - to: 'ops-team@example.com'
+      #   subject: '[CRITICAL] {{ .GroupLabels.alertname }}'
+      #   html: '{{ template "email.default.html" . }}'
+      
+      # Slack example (uncomment and configure)
+      # slack_configs:
+      # - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+      #   channel: '#alerts-critical'
+      #   title: 'Critical Alert: {{ .GroupLabels.alertname }}'
+      #   text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+    
+    - name: 'warning-alerts'
+      # Email example (uncomment and configure)
+      # email_configs:
+      # - to: 'ops-team@example.com'
+      #   subject: '[WARNING] {{ .GroupLabels.alertname }}'
+
+# =============================================================================
+# 6. PrometheusRule for Comprehensive Alerts
+# File: prometheus-alerts.yaml
+# =============================================================================
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: microservices-comprehensive-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack-prometheus
+    role: alert-rules
+spec:
+  groups:
+  # Infrastructure Alerts
+  - name: infrastructure
+    interval: 30s
+    rules:
+    - alert: NodeHighMemoryUsage
+      expr: |
+        (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+      for: 5m
+      labels:
+        severity: warning
+        component: infrastructure
+      annotations:
+        summary: "Node {{ $labels.instance }} has high memory usage"
+        description: "Memory usage is {{ $value | humanize }}%"
+    
+    - alert: NodeHighCPUUsage
+      expr: |
+        100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+      for: 5m
+      labels:
+        severity: warning
+        component: infrastructure
+      annotations:
+        summary: "Node {{ $labels.instance }} has high CPU usage"
+        description: "CPU usage is {{ $value | humanize }}%"
+    
+    - alert: NodeDiskSpaceLow
+      expr: |
+        (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / 
+         node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 15
+      for: 5m
+      labels:
+        severity: warning
+        component: infrastructure
+      annotations:
+        summary: "Node {{ $labels.instance }} has low disk space"
+        description: "Only {{ $value | humanize }}% disk space remaining on {{ $labels.device }}"
+  
+  # Application Performance Alerts
+  - name: application_performance
+    interval: 30s
+    rules:
+    - alert: HighErrorRate
+      expr: |
+        sum(rate(http_requests_total{status=~"5.."}[5m])) by (service) /
+        sum(rate(http_requests_total[5m])) by (service) > 0.05
+      for: 2m
+      labels:
+        severity: critical
+        component: application
+      annotations:
+        summary: "High error rate on {{ $labels.service }}"
+        description: "Error rate is {{ $value | humanizePercentage }}"
+    
+    - alert: HighResponseTime
+      expr: |
+        histogram_quantile(0.99,
+          sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le)
+        ) > 2
+      for: 5m
+      labels:
+        severity: warning
+        component: application
+      annotations:
+        summary: "High response time on {{ $labels.service }}"
+        description: "99th percentile response time is {{ $value }}s"
+    
+    - alert: LowRequestRate
+      expr: |
+        sum(rate(http_requests_total[5m])) by (service) < 0.1
+      for: 10m
+      labels:
+        severity: warning
+        component: application
+      annotations:
+        summary: "Low request rate on {{ $labels.service }}"
+        description: "Request rate is {{ $value }} req/s"
+  
+  # Container and Pod Alerts
+  - name: containers_and_pods
+    interval: 30s
+    rules:
+    - alert: PodCrashLooping
+      expr: |
+        rate(kube_pod_container_status_restarts_total[15m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+        component: kubernetes
+      annotations:
+        summary: "Pod {{ $labels.pod }} is crash looping"
+        description: "Pod has restarted {{ $value }} times in the last 15 minutes"
+    
+    - alert: PodNotReady
+      expr: |
+        sum by (namespace, pod) (kube_pod_status_phase{phase!="Running"}) > 0
+      for: 10m
+      labels:
+        severity: warning
+        component: kubernetes
+      annotations:
+        summary: "Pod {{ $labels.pod }} is not ready"
+        description: "Pod in {{ $labels.namespace }} has been in {{ $labels.phase }} state for more than 10 minutes"
+    
+    - alert: ContainerMemoryNearLimit
+      expr: |
+        container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        component: kubernetes
+      annotations:
+        summary: "Container {{ $labels.container }} near memory limit"
+        description: "Container is using {{ $value | humanizePercentage }} of memory limit"
+  
+  # Service Level Objective (SLO) Alerts
+  - name: slo_alerts
+    interval: 30s
+    rules:
+    - alert: SLOBudgetBurnRate
+      expr: |
+        (sum(rate(http_requests_total{status=~"5.."}[5m])) by (service) /
+         sum(rate(http_requests_total[5m])) by (service)) > 0.01
+      for: 5m
+      labels:
+        severity: critical
+        component: slo
+      annotations:
+        summary: "SLO error budget burning fast for {{ $labels.service }}"
+        description: "Current error rate {{ $value | humanizePercentage }} exceeds SLO target"
+    
+    - alert: AvailabilitySLOBreached
+      expr: |
+        avg_over_time(up{job="microservices"}[1h]) < 0.999
+      for: 5m
+      labels:
+        severity: critical
+        component: slo
+      annotations:
+        summary: "Availability SLO breached for {{ $labels.job }}"
+        description: "Availability is {{ $value | humanizePercentage }}"
+
+# =============================================================================
+# 7. Network Policy for Monitoring Namespace
+# File: networkpolicy-monitoring.yaml
+# =============================================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: monitoring-allow-ingress
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          purpose: application
+    ports:
+    - protocol: TCP
+      port: 9090  # Prometheus
+    - protocol: TCP
+      port: 3000  # Grafana
+    - protocol: TCP
+      port: 9093  # Alertmanager
+
+# =============================================================================
+# 8. ResourceQuota for Namespaces
+# File: resourcequota.yaml
+# =============================================================================
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: monitoring-quota
+  namespace: monitoring
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    persistentvolumeclaims: "10"
+
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: microservices-quota
+  namespace: microservices
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+
+# =============================================================================
+# 9. PodDisruptionBudget for High Availability
+# File: pdb-monitoring.yaml
+# =============================================================================
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: prometheus-pdb
+  namespace: monitoring
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: grafana-pdb
+  namespace: monitoring
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+
+# =============================================================================
+# 10. Service for Custom Application Monitoring
+# File: service-monitoring-template.yaml
+# Template for your microservices
+# =============================================================================
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: example-microservice
+  namespace: microservices
+  labels:
+    app: microservice
+    service: example
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+  selector:
+    app: example-microservice
+
+
+
+
+\section{Part 2 :}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part2/1project_in_local.png}
+\end{figure}
+
+https://github.com/noredinbah/project_monitoring
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part2/2project_in_github.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part2/3github_actions_push_docker_hub.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part2/4dockerhub_after_push.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part2/5app_with_dockercompose.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part2/6test_docker_compose_metrics.png}
+\end{figure}
+
+https://github.com/noredinbah/project_monitoring/tree/main/k8s-manifests
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part2/7deploy_files.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part2/8deployment_runing.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part2/9deployment_runing_in_minikube.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part2/10result_runing_in_browser_minikube.png}
+\end{figure}
+
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part2/11all_resources.png}
+\end{figure}
+
+
+
+
+
+
+
+
+..github/workflows/docker-publish.yml
+├── api-gateway
+│   ├── Dockerfile
+│   ├── index.js
+│   └── package.json
+├── docker-compose.yml
+├── frontend
+│   ├── docker-entrypoint.sh
+│   ├── Dockerfile
+│   ├── env.template.js
+│   ├── index.html
+│   └── nginx.conf
+├── inventory-service
+│   ├── Dockerfile
+│   ├── index.js
+│   └── package.json
+├── order-service
+│   ├── Dockerfile
+│   ├── index.js
+│   └── package.json
+├── payment-service
+│   ├── Dockerfile
+│   ├── index.js
+│   └── package.json
+└── user-service
+    ├── Dockerfile
+    ├── index.js
+    └── package.json
+
+kubectl apply -f user-service-deployment.yaml
+kubectl apply -f order-service-deployment.yaml
+kubectl apply -f inventory-service-deployment.yaml
+kubectl apply -f payment-service-deployment.yaml
+kubectl apply -f api-gateway-deployment.yaml
+kubectl apply -f frontend-deployment.yaml
+
+
+
+ — All-in-One: System Monitoring Lab for Microservices  
+"Students are required to work in pairs for this lab." 
+Overview 
+This lab combines the content from Parts 1-6 and applies it to a microservices architecture. It focuses on 
+deploying and monitoring microservices in a Kubernetes environment. Students will design and implement a 
+simple multi-service application, instrument it with metrics, health checks, logging, and tracing, and deploy 
+it using containers. The lab also covers integrating the system with Prometheus for metrics collection, 
+Grafana for visualization, and configuring alerting rules to detect anomalies. An advanced component 
+includes implementing a CI/CD pipeline to automate the build, test, and deployment process. 
+Learning Objectives 
+By the end of this lab, you will be able to: 
+1. Design and deploy a small microservices system on Kubernetes. 
+2. Instrument services with metrics, health checks, and structured logs. 
+3. Configure Prometheus to scrape application and infrastructure metrics. 
+4. Write useful PromQL queries and create Grafana dashboards. 
+5. Implement alerting via Alertmanager and test alert workflows. 
+6. Monitor containers and Kubernetes objects (pods, nodes, deployments). 
+7. Apply monitoring patterns for microservices (health checks, circuit breakers, request tracing, SLO/SLI 
+basics). 
+8. Troubleshoot incidents using dashboards, metrics and traces. 
+Prerequisites 
+ Basic knowledge of Docker and Kubernetes concepts. 
+ A machine with kubectl, docker (or podman), and either minikube, kind, or a cloud Kubernetes 
+cluster available. 
+ helm installed (v3+). 
+ git, curl, and a code editor. 
+Note: this lab will include commands and YAML you can paste into your terminal. Adjust namespaces and 
+resource names as needed. 
+INE3-SUD : Monitoring 
+2 
+Lab topology (sample system) 
+The microservices system to be built and monitored is as follows. 
+ api-gateway - routes requests to backend services (simple Nginx or Node gateway). 
+ order-service - processes orders, emits business metrics and events. 
+ inventory-service - maintains inventory counts and exposes metrics. 
+ frontend - simple UI to generate traffic (can be a static app or an HTTP request generator). 
+ user-service - manages users and exposes HTTP endpoints and metrics (Optional). 
+ payment-service - simulates payment processing (Optional). 
+Support services: 
+ Prometheus + Alertmanager - metrics collection and alerting. 
+ Grafana - visualization and dashboarding. 
+ kube-state-metrics and node-exporter - Kubernetes and node metrics. 
+ Loki (or EFK) - aggregated logs (optional but recommended). 
+ Jaeger - distributed tracing (optional but recommended). 
+All services should run in Kubernetes objects (Deployments, Services) and expose /metrics (Prometheus) and 
+/health endpoints. 
+Part 1 - Environment setup 
+ Initialize and start the Kubernetes environment. 
+ Enhance the cluster by enabling necessary add-ons to support resource monitoring. 
+ Configure external access management for services within the cluster. 
+ Organize the cluster resources using appropriate namespaces. 
+ Deploy a monitoring solution using a package management tool (Monitoring Stack). 
+ Verify the successful deployment of monitoring components. 
+ Access and review credentials for the visualization dashboard. 
+ Identify and describe the key components included in the monitoring stack. 
+Part 2 - Sample microservices deployment (Deploy Core Services and Instrumentation) 
+ Design and prepare the architecture for a simple demonstration application. 
+o Include microservices that call each other using the circuit breaker pattern (e.g., order 
+service calls inventory service). 
+INE3-SUD : Monitoring 
+3 
+o Integrate an API gateway (NGINX Ingress Controller) for external access. 
+ Apply instrumentation practices to each microservice, including metrics, health checks, logging, and 
+distributed tracing (Jaeger/OpenTelemetry). 
+ For each microservice, define basic and advanced metrics covering all four Prometheus metric types: 
+Counters, Gauges, Histograms, and Summaries. 
+ Develop and implement the core microservices following the instrumentation guidelines. 
+ Test the functionality of the developed services to ensure correctness before deployment. 
+ Prepare container build configurations for each microservice. 
+ Implement a CI/CD pipeline (e.g., using GitHub Actions) to automate the build, test, and deployment 
+of each microservice. 
+ Verify that all deployed services are correctly running and accessible. 
+ Perform basic API interactions to validate service communication and functionality (e.g., through 
+frontend UI or Postman). 
+ Monitor the CI/CD pipeline logs to ensure successful builds, tests, and deployments for each 
+microservice. 
+Part 3 - Prometheus Scraping Configuration (Connect Services to Prometheus) 
+Scraping: Prometheus periodically sends HTTP GET requests to the /metrics endpoint. 
+Metrics format: Exposed in plain text using Prometheus exposition format (e.g., counters, gauges, 
+histograms). 
+Target discovery: Automatically done through Kubernetes API. 
+ Configure the monitoring system to collect metrics from the deployed microservices. 
+ Define or adjust the scraping configuration to include the newly deployed services. 
+ Ensure that each service exposes a metrics endpoint compatible with the monitoring system. 
+ Organize the scraping setup to target services within the appropriate namespace or environment. 
+ Validate that the monitoring tool successfully detects and gathers metrics from all relevant 
+endpoints. 
+ Explore the collected metrics and verify their visibility within the monitoring dashboard. 
+ Investigate how label configuration and service discovery influence metric collection. 
+Part 4 - Visualization with Grafana 
+ Access the visualization platform included in the monitoring stack (Prometheus and Grafana). 
+ Connect the Grafana to the metrics data source. 
+ Explore the available dashboards and identify key visual components related to cluster and service 
+performance. 
+ Create or customize dashboards to visualize metrics from the deployed microservices. 
+ Add and organize panels to display indicators such as resource usage, request rates, and error 
+counts. 
+ Experiment with different visualization types (e.g., graphs, gauges, tables) to represent monitoring 
+data effectively. 
+ Analyze the displayed metrics to interpret the health and behavior of the system. 
+ Save the configured dashboards. 
+INE3-SUD : Monitoring 
+4 
+Part 5: Configure and Manage Alerts. 
+ Configure the alerting component (Alertmanager) of the monitoring stack to track system and 
+service health conditions. 
+ Define alerting rules based on the defined metrics. Set appropriate thresholds and conditions that 
+trigger alerts when anomalies occur. 
+ Integrate the alerting system with the visualization platform for centralized monitoring (Alerts in 
+Grafana). 
+ Explore how alert notifications can be routed to different channels (e.g., email, Slack, or other 
+integrations). 
+ Test the alerting setup by simulating conditions that should trigger notifications. ---------------------------------------------------------------------------------- 
+Lab Deliverables – System Monitoring with Kubernetes and Microservices 
+Students are required to submit a detailed technical report (PDF) documenting the step-by-step execution of 
+this lab. The report should include each command in the correct order, accompanied by a screenshot of 
+the results and a brief description (These details are mandatory). 
+Submission Deadline (No delays will be tolerated): 19-11-2025 
+
+
+
+monitoring/
+├── prometheus.yml
+├── grafana-deployment.yaml
+├── prometheus-deployment.yaml
+├── alertmanager-deployment.yaml
+
+
+
+kubectl create configmap prometheus-config --from-file=monitoring/prometheus.yml
+
+
+kubectl apply -f monitoring/prometheus-deployment.yaml
+kubectl apply -f monitoring/grafana-deployment.yaml
+kubectl apply -f monitoring/alertmanager-deployment.yaml
+
+
+minikube service prometheus
+minikube service grafana
+minikube service alertmanager
+Prometheus → http://<minikube-ip>:<nodeport>
+
+Grafana → http://<minikube-ip>:<nodeport> (login default: admin/admin)
+
+Alertmanager → http://<minikube-ip>:<nodeport>
+
+
+# Delete previous deployments and services
+kubectl delete deployment prometheus grafana alertmanager
+kubectl delete service prometheus grafana alertmanager
+
+# Delete configmaps if you want to recreate them
+kubectl delete configmap prometheus-config alertmanager-config
+
+# Recreate configmaps
+kubectl create configmap prometheus-config --from-file=prometheus.yml
+kubectl create configmap alertmanager-config --from-file=alertmanager-config.yml
+
+# Apply deployments and services again
+kubectl apply -f prometheus-deployment.yaml
+kubectl apply -f grafana-deployment.yaml
+kubectl apply -f alertmanager-deployment.yaml
+kubectl logs alertmanager-5cbfd98cb6-mt8pk
+kubectl describe pod alertmanager-5cbfd98cb6-mt8pk
+kubectl delete configmap alertmanager-config
+kubectl create configmap alertmanager-config --from-file=alertmanager-config.yml
+kubectl rollout restart deployment alertmanager
+err="open /etc/alertmanager/config.yml: no such file or directory"
+kubectl get configmap alertmanager-config -o yaml
+2️⃣ Fix the deployment to match the expected path
+
+In your alertmanager-deployment.yaml, you probably have something like:
+
+containers:
+  - name: alertmanager
+    image: prom/alertmanager:latest
+    args:
+      - "--config.file=/etc/alertmanager/config.yml"
+    volumeMounts:
+      - name: alertmanager-config
+        mountPath: /etc/alertmanager/
+
+Problem: the file in the ConfigMap is named alertmanager-config.yml, so /etc/alertmanager/config.yml doesn’t exist.
+
+✅ Fix: use subPath to map the file correctly:
+
+volumeMounts:
+  - name: alertmanager-config
+    mountPath: /etc/alertmanager/config.yml
+    subPath: alertmanager-config.yml
+
+
+This will mount the ConfigMap file alertmanager-config.yml exactly at /etc/alertmanager/config.yml.
+
+kubectl apply -f alertmanager-deployment.yaml
+kubectl rollout restart deployment alertmanager
+kubectl delete deployment alertmanager prometheus grafana
+kubectl apply -f prometheus-deployment.yaml
+kubectl apply -f alertmanager-deployment.yaml
+kubectl apply -f grafana-deployment.yaml
+kubectl create configmap prometheus-config --from-file=prometheus.yml
+kubectl create configmap prometheus-rules --from-file=alerts.yml
+kubectl create configmap alertmanager-config --from-file=alertmanager-config.yml
+kubectl create configmap prometheus-config --from-file=prometheus.yml --dry-run=client -o yaml | kubectl apply -f -
+kubectl create configmap prometheus-rules --from-file=alerts.yml --dry-run=client -o yaml | kubectl apply -f -
+kubectl create configmap alertmanager-config --from-file=alertmanager-config.yml --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f alertmanager-deployment.yaml
+kubectl apply -f prometheus-deployment.yaml
+kubectl port-forward deployment/alertmanager 9093:9093
+
+
+
+\section{part 3 4 5}
+
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/1our_metrics.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/2our_metrics2.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/3our_metrics3.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/4our_metrics4.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/5monitoring_files.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/6prometheus_yml.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/7alert_rulesfile_10uerstoalert.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/8alertmanagerconfigfile.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/9apply_monitoring.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/10pods_running.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/11prometheus_runing.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/12targets_prom.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/13test_promql.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/14test_promql2.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/15test_promql3.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/16test_promql4.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/17test_promql5.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/18grafana_runing.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/19grafana dashboard.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/20alerting_in_prom_green.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/21crea10usercreated.png}
+    \caption{10usercreated to trigger the alert}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/22alerting_in_prom_yellow.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/23firing_in_prometheu.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/24firing_alertmanager.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/25slack_alertmanager.png}
+\end{figure}
+
+\begin{figure}[htpb]
+    \centering
+    \includegraphics[width=0.9\linewidth]{part3/26email_alerting.png}
+\end{figure}
+
+
+
+
+
+
+completer cette section latex (regrouper part 345 dans une part)
+le codes source sont dans github (don't write any file bacause codes source sont dans github et il est en image)
+
+https://github.com/noredinbah/project_monitoring/tree/main/monitoring
+et ecrire un peu de trouble shooting 
+et les commande utilise
